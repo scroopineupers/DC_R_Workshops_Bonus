@@ -1,0 +1,452 @@
+---
+title: "Data Carpentry R Workshop Follow-up 1/18/18"
+author: "Alex Bajcz"
+date: 'Last updated: January 17, 2018'
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r, include=FALSE}
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+##Introduction
+
+This document/lesson is designed to be a follow-up to the materials presented on Day 2 of the Data Carpentry workshop. On Day 2, we covered:
+
+* The basics of the R language and of R usage (i.e., functions, scripts, objects, importing data, indexing, and vectors). 
+* Data manipulation and summarization using the package _dplyr_.
+* Data graphing and representation using the package _ggplot2_. 
+* Data reporting and communication using the package _knitr_.
+
+If you did not take the Data Carpentry lesson before reading this and you want to freshen up on these topics, you can access and review all the lesson materials we used [here](https://uw-madison-aci.github.io/2018-01-08-uwmadison-dc/).
+
+This document is meant to be a supplement to those lessons, introducing three new concepts that will "elevate" your R skills to new heights:
+
+* Creating date variables using separate day, month, and year variables, which will enable new graphing options.
+* The logical function _which_(), the control function _for_(), and the hybrid function _if_() and their many uses.
+* The process and syntax for creating custom R functions.
+
+##Getting our data file for the lesson
+
+For this lesson, we'll use the cleaned-up version of the portal data set we used in the Data Carpentry lessons linked to above.
+
+```{r downloading_data}
+download.file("http://kbroman.org/datacarp/portal_clean.csv", "portal_clean.csv") #This will put the file into your working directory, which is whatever you've set it to. You can change this by either using the "Projects" feature we showed you, or you can change this by going to the "Session" menu and selecting the "Set Working Directory" option and choosing the directory you would like to be working in.
+
+surveys = read.csv("portal_clean.csv") #This reads in the file, so long as its in your current directory. You'll notice I'm using the = assignment operator and will be throughout. Recognize that = and <- work the same way!
+```
+
+##Part 1 -- Dates
+
+Working with dates in R or any similar program can be a challenge, as we discussed in the workshop. We recommend that you store date information in separate day, month, and year columns. This gives you some flexibility in how you sort, summarize, and graph your data. It's also easier to turn your separate columns back into dates in R than it is to do the reverse, in my experience. But we might want to have a date column nonetheless--something R recognizes to be a date. To do that, we're going to need to follow a few steps.
+
+First, we need to know what time zone R thinks we are in.
+
+```{r time_zone}
+Sys.timezone() #This function tells you what R thinks your time-zone is where you are. May not work on all systems!
+```
+
+I may have forgotten to mention in the workshop that there is a fast way to index whole columns of a data frame--by using the $ operator and the column's name. 
+
+```{r indexing_trick}
+surveys$sex[1:100] #Returns the whole column as a vector, here restricted to just the first 100 entries for space. We'll be using this indexing trick throughout this lesson.
+```
+
+Now, we can use the _ISOdate_() function to convert our separate date columns to a single column with information R will recognize as date information.
+
+```{r isodate}
+full_dates = ISOdate(surveys$year, surveys$month, surveys$day, tz = Sys.timezone()) #Will stitch together the time columns into a single text string for each row with date and time info. Omit the tz argument if the Sys.timezone function doesn't work on your system.
+```
+
+That's good, but if we look at the full dates, we'll see we get meaningless time information this way.
+
+```{r needless_times}
+full_dates[1:10]
+```
+
+We can then use the _as.Date_() function to remove these needless times. Then, we can store that new date information as a new column called _date_ in our _surveys_ data frame.
+
+```{r getting_date_column}
+surveys$date = as.Date(full_dates) #Attaching this as a column to our data frame.
+
+str(surveys) #We can see that it's there.
+```
+
+###Try it!
+
+Add a date column to your data frame. Then, make the coolest ggplot line graph you can think to make, using _date_ as the x variable plus *geom_line*(). Maybe try filtering out some data, grouping by each individual date, and then summarizing using *dplyr* tools. 
+
+```{r loading_packages, message=FALSE}
+library(dplyr) #Load our libraries so we can use their tools.
+library(ggplot2)
+```
+
+###Example
+
+This graph looks at trends for the species DM in the years 1980 through 1982. It groups the data by date and by sex so that we only have a single mean weight for all animals of each sex observed on each individual date (grouping by individual date prevents weird buzz-sawing that occurs when you have multiple entries on the same date). Then, it graphs these data over time as a line graph, faceted by sex. 
+
+```{r cool_line_graph1}
+surveys %>% filter(species_id == "DM", year %in% c(1980, 1981, 1982)) %>% # %in% looks for matches between the left and right side--here it's trying to find matches between the year column and the years provided on the right side--1980, 1981, and 1982--keeping only those rows that match.
+  group_by(date, sex) %>% summarize (weight = mean(weight)) %>%
+  arrange(date) %>% #Annoyingly, the dates are not in chronological order in this data set by default, so we have to put them in order using arrange().
+  ggplot(aes(x=date, y=weight)) + geom_line() + facet_wrap(~sex)
+```
+
+##Part 2 -- The powerful functions _which_(), _for_(), and _if_().
+
+These three functions are ones I think every regular R user should be comfortable with because they're just so powerful. We'll start with maybe the simplest of the three, _which_(). *which()* is a **logical function**, meaning it takes a logical rule as input and returns output contingent on whether or not that rule is satisfied. *filter*() in _dplyr_ is also a logical function. In *which*()'s case, it returns the entry numbers in the object given as an input that match the rule given as input. For example...
+
+```{r trying_which}
+which(surveys$sex == "F")[1:100] #This tells us which rows in surveys are of females (here, restricted to just the first 100 values to save space)
+
+which(surveys$weight < 20 | surveys$weight == 65)[1:100] #This uses |, which means OR. This returns which rows in surveys have weights that are less than 20 OR are equal to 65. 
+
+which(surveys$weight > 40 & surveys$weight <= 47)[1:100] #This uses &, which means AND. This returns which rows in surveys have weights greater than 40 but less than or equal to 47. 
+```
+As you can see, you can provide multiple rules to *which*() so long as they are "complete," meaning R knows exactly which column is being compared to what value(s) in each separate rule you provide on either side of the | or &. 
+
+_which_() can be used to make subsets of data in a similar way as *filter*() can (although filter is undoubtedly easier to use!)
+
+```{r filtering}
+all_females = surveys[which(surveys$sex =="F"), ] #Figure out which rows have a female, and then only keep those rows.
+all_females[1:20,]
+```
+
+_which_() can also be used repeatedly to make new columns that are more complex than *mutate*() in *dplyr* could make. For example, what if we wanted to create a new categorical variable, *weight_class*, that divides our animals into three different weight classe: small, medium, and large? We could do that using *which*().
+
+```{r weight_classes}
+surveys$weight_class = NA #This makes an empty column in surveys called weight_class that is just full of NA values to start with.
+surveys$weight_class[which(surveys$weight <= 30)] = "small" #Find every weight entry that is <= 30 and make the corresponding entries in weight_class = "small"
+surveys$weight_class[which(surveys$weight >= 60)] = "large" #Make a large class in the same manner.
+surveys$weight_class[which(surveys$weight > 30 & surveys$weight < 60)] = "medium" #Make a medium class.
+
+surveys$weight_class[300:350] #As we can see, we've made this column. 
+```
+
+###Try it! 
+
+Make your own new categorical variable using *which*(), then make a neat ggplot with those data, perhaps using *geom_boxplot*() with the new category on the x axis.
+
+###Example
+
+These two graphs show the data generated above in two different ways, first as a box plot and then as a bar plot.
+
+```{r multiple_plots}
+ggplot(surveys, aes(x=weight_class, y=hindfoot_length)) + geom_boxplot(aes(fill=sex)) #Medium animals show less variation in hindfoot_length than other animal weight classes. Notice fill is used with box plots and bar plots instead of color, generally!
+ggplot(surveys, aes(x=weight_class)) + geom_bar(aes(fill=sex), position="dodge") #there are many more males than females in the medium weight class. position="dodge" inside of geom_bar() will dodge bars that otherwise would be placed in the same spot apart from one another, as needed. The default is to instead stack them--try it out by removing this argument!
+```
+
+##Part 2-2 -- *for*()
+
+*for*() is an immensely useful function that every regular R user should know. Why? Because, using *for*(), you can make R do something repetitive for you in seconds that otherwise would have taken hours to do by hand or dozens of lines of code to do otherwise.
+
+*for*() is a **control function**--it controls or changes R's behavior so that it interprets code differently than it otherwise would. Specifically, it forces R to repeat the same code over and over again, perhaps with modifications each time. This is why *for*() calls are often called *for* "loops;" you are causing R to loop over the same code multiple times. How it does this is a little weird though.
+
+Here's the basic structure of a *for*() call/loop:
+
+```
+for(variable in pool) { ~Code to loop over~ } 
+```
+
+*for*() loops have a few parts, as illustrated above. First, *for*() takes two key inputs--a **"variable"** and a **"pool"**, separated by a particle called "in," which we won't talk about right now. I will explain what those inputs mean in a second. The second part of a *for*() call is the code to be repeated each time the loop runs. This code is put in **curly braces**, { }. Curly braces help tell R that this region is not "normal code"--it's *special* code being controlled by a **control function**. 
+
+Now, to explain what the *variable* and the *pool* are, let's think abstractly for a second. If you were going to repeat some repetitive task for a long time, perhaps with modifications each time, there are probably some basic things you'd want to know and keep track of. You'd want to know how many times you'll repeat the task, as well as what modifications to make each time, if any. You'd also want a way to keep track of which time through the task you're currently on. 
+
+Together, the *variable* and the *pool* do these three things but in kind of a weird way. Here's how: Every time the *for*() loop runs, *for*() takes a value out of the *pool* and makes the *variable* equal to it. In other words, the *variable* is an **object** whose *name* stays the same but whose *content* will change each time the *for*() loop runs. Meanwhile, the *pool* is a **vector** of values, each one a value the *variable* object will eventually take. Because the *variable* needs to take on each value in the *pool* once before the *for*() loop can end, the *for*() loop will run until there are no more values in the *pool* left for the *variable* to take. So, if the *pool* is 5 values long, the *for*() loop will run five times. 
+
+...That may have been hard to follow! Let's see this all in action with a very simple *for*() loop. What this one does is call the *variable* "*blah*" and make the *pool* equal to the values from 1 to 5. This will mean the *for*() loop will run five times, and *blah* will contain 1 the first time, 2 the second time, and so on until it has run out of values to take (which will happen after 5). The command *print(blah)* will show you what value *blah* is holding each time through the loop. 
+
+```{r first_for_loop}
+for (blah in 1:5) {
+  print(blah)
+}
+```
+
+R reports the numbers 1 through 5, one at a time, each on its own line, because that is what *blah* equaled each time through the *for*() loop. 
+
+
+Some key things to know about *for*(): As the following code will demonstrate, the *variable* can be any name an object could be named, and the *pool* can contain almost any set of values, including things that are not in any particular order.
+
+```{r for_variant1}
+for (num in c(-3, 1000, pi)) { #Here, our variable is called "num" instead, and the pool is a vector of three wacky values.
+  print(num)
+}
+```
+
+To show the real power of *for*() loops, though, we need to do something more exciting. Let's make a vector whose values are a mathematical function of the values before them. First, some prep work:
+
+```{r more_exciting_for}
+vector1 = rep(NA, times = 10) #The rep() function repeats a value (or set of values) however many times you tell it to. Here, we are creating a vector of length 10, with all the entries being NA for now. This will be our "storage vector"" for the values our for() loop will create for us.
+vector1[1] = 3 #When we index an object like a vector that doesn't have rows or columns, we can just use a single value. Here, we're changing the first value in vector1 to a 3.
+```
+
+Now, for the *for*() loop itself. I mentioned earlier that the *variable* is an object that contains one value from the *pool* at a time. Conveniently, that *variable* object can be used inside of the *for*() loop to do work just like we can do work with any other object we make and give a name to.
+
+```{r variables_in_for}
+for(num in 2:10) { #Here, our variable is called "num" and our pool is 9 values, specifically the numbers 2 through 10 in order.
+  value = vector1[num-1] #Here, we are taking advantage of the fact that num is an object that holds the changing value of a number from the pool. The first time through this code, it will be holding the value 2, so 2 - 1 = 1. As such, "value"" will hold the first (and only) entry in vector1 after this command runs the first time through.
+  new_value = (value * 2) + 4 #Here, we are saying that our new_value should be equal to our old value times 2 and then plus 4.
+  vector1[num] = new_value #Now, we put that new_value into our storage vector, using num to help us put this new value in the right place in that vector.
+}
+vector1
+```
+
+Pretty cool, huh?
+
+###Try it! 
+
+For only the species DM in only the year 1980, use a *for*() loop to create a new column for the cumulative weights of all the animals observed by a given date in that year. In other words, each row should be the sum of all the rows that came before it.
+
+###Example
+
+Here's how I would go about doing this.
+
+```{r DM_by_year}
+just_dm = surveys %>% filter(species_id == "DM" & year == 1980) %>% arrange(date) #First, filter the data and put it in chronological order, which may not be necessary if you already put them in order earlier. As you can see, filter() can take ANDs and ORs, just like which() can!
+
+just_dm$cumulative_weight = NA #Create the new column, which will be empty for now.
+
+just_dm$cumulative_weight[1] = just_dm$weight[1] #Set the first value in the new column equal to the first value in the normal weight column.
+
+#Then, go row by row through the data set. Each row's cumulative weight value should be equal to the previous row's cumulative weight value plus the weight value in the current row. 
+for(wgt in 2:nrow(just_dm)) { #I like to call my variables something memorable, so I chose "wgt" here.
+  just_dm$cumulative_weight[wgt] = just_dm$cumulative_weight[wgt-1] + just_dm$weight[wgt]
+}
+
+just_dm$cumulative_weight #We now have our cumulative weights.
+
+ggplot(just_dm, aes(x=date, y=cumulative_weight)) + geom_line() #We can plot these using ggplot to see a stair-step pattern.
+
+```
+
+##Part 2-3 -- *if*()
+
+Now, time for our last powerful function. *if*() is **both** a **logical function** like *which*() **and** a **control function** like *for*(). So, it takes a logical rule as input and then controls R's behavior based on the result of that logical rule. Specifically, it _only_ runs the code provided to it if the rule is true. Let's see this in action.
+
+```{r if_in_action}
+test = 50
+if (test > 30) { "Yes, test is greater than 30" } #If calls have two parts--the logical rule inside the parentheses and the code to execute if the rule is true in curly braces. Here, the rule was true, so the message we put inside the curly braces was returned.
+
+test = 15
+if (test > 30) { "Yes, test is greater than 30" } #Now, here, nothing is returned because the rule is no longer true. 
+```
+
+But what if you want to do one thing if the rule is true and another thing entirely if it's not? *if*() has a sister function called *else* for these instances.
+
+```{r else}
+if (test > 30) { "Yes, test is greater than 30" } else { test * 10 } #This tells R to run the code inside the if()'s curly braces if the rule given to if() is true and otherwise to run the code in the else()'s curly braces. Here, the rule is not true, so the else code runs!
+```
+
+A few things are worth noting here--the code inside the curly braces can be one line or hundreds; it doesn't matter! Second, you'll notice *else* only gets curly braces, not parentheses. This is because it doesn't need input--it will only run if the if() logical rule was not true. Third, the *else* has to start on the same line as the *if*() braces close or you will get an error.
+
+For example, this would run.
+
+```
+if (test > 30) { "Yes, test is greater than 30" 
+} else { test * 10 } #The _else_ is on the right line here.
+```
+
+But this would return an error because R won't know the *else* is supposed to go with the *if*() on the previous line.
+
+```
+if (test > 30) { "Yes, test is greater than 30" } 
+else { test * 10 }
+```
+
+*if*() is really useful for many things. For example, if you're designing your own functions (see the next section!), it's useful for generating warning messages, which will print only if a certain bad condition is met. Another use is inside of *for*() loops--maybe you only want something to happen during a *for*() loop in certain instances and not in others.
+
+Let's say we wanted to get cumulative counts of the number of animals of the species DM observed over time in the year 1980 that were less than 35 grams. We could do this by using an *if*() and *else* pair inside of a *for*() loop similar to the one we just wrote in the previous sub-section. We will make a cumulative count of animals, but only increase that count when we encounter a small-enough animal. When we don't, we will carry the count forward, so to speak, but not increase it. First, though, we need to do some housekeeping to set the table for our *for*() loop.
+
+```{r housekeeping_to_start}
+just_dm$cumulative_small = NA #Make the empty vector
+just_dm$weight[1] <= 35 #Check to see if the first animal in our data set is "small." 
+just_dm$cumulative_small[1] = 0 #FALSE, so no. In that case, start the count at 0. Maybe you'd need to start it at 1, depending on the rule you want to apply.
+```
+
+Now, we can do our *for*() loop. We're going to go row by row with our *for*() loop, but now what happens each time through will depend on whether the weight value in a given row is above or below a certain threshold. *if*() will handle one of those two cases, and *else* will handle the other.
+
+```{r if_else_and_for}
+for(dm in 2:nrow(just_dm)) { #Go through each row of the dm data set after the first, which we did manually.
+  if (just_dm$weight[dm] <= 35) { #Check to see if the current row is less than or equal to 35.
+    just_dm$cumulative_small[dm] = just_dm$cumulative_small[dm-1] + 1 #If it is, increase the cumulative count by one.
+  } else {
+    just_dm$cumulative_small[dm] = just_dm$cumulative_small[dm-1] #If not, though, just carry the previous count forward.
+  }
+} #Make sure to watch your curly braces! Don't forget to close each set you've made...
+
+just_dm$cumulative_small #We were successful in creating our new column!
+
+ggplot(just_dm, aes(x = date, y = cumulative_small)) + geom_line() #We can now plot these data in a similar way as before.
+```
+
+###Try it! 
+
+Make **two** new cumulative count columns that are interesting to you...maybe big females and small males, for example. Then, plot them **both** on the same graph _in different colors_! Use two *geom_line*()s with a shared x axis of *date* but a different y column in each.
+
+###Example.
+
+Here, I get extra fancy--I combine the process of making both columns into a single *for*() loop. This is pretty tricky! I have had a lot of practice at doing this. I would recommend doing this in two separate *for*() loops to start out. However, see if you can understand how you *might* go about combining the two loops, once you have them, by looking at my code below. As you'll see, it requires using multiple *if*() and *else* pairs, stacked inside of one another!
+
+```{r extra_fancy}
+just_dm$small_males = NA #Make the empty vectors
+just_dm$large_females = NA
+just_dm$weight[1] 
+just_dm$sex[1]
+just_dm$small_males[1] = 0 #First entry is not a male, so we can set this first entry to 0.
+just_dm$large_females[1] = 0 #First entry is a female, but not a large one, so also a 0.
+
+for(dm in 2:nrow(just_dm)) { #Go through each row of the dm data set after the first.
+  if (just_dm$sex[dm] == "F") { #Let's first check to see if the animal is female.
+    just_dm$small_males[dm] = just_dm$small_males[dm-1] #We've gotta carry forward the male counter, since this animal is not a male.
+    
+    if(just_dm$weight[dm] > 50) { #Then, let's see if that female is large.
+      just_dm$large_females[dm] = just_dm$large_females[dm-1] + 1 #Assuming it is, let's increase the large female count by 1.
+    } else { just_dm$large_females[dm] = just_dm$large_females[dm-1] } #But if it isn't, let's not increase the count.
+  
+    } else { #Over here on the male side...Remember, we'll only end up over here if the animal is not female.
+      just_dm$large_females[dm] = just_dm$large_females[dm-1] #We've gotta carry over the female counter, just as we did above in the female half with the male counter.
+      
+    if(just_dm$weight[dm] < 35) { #Then, let's see if that male is small.
+      just_dm$small_males[dm] = just_dm$small_males[dm-1] + 1 #Assuming it is, let's increase the small male count by 1.
+    } else { just_dm$small_males[dm] = just_dm$small_males[dm-1] } #But if it isn't, let's not increase the count.
+  }
+} #Gotta make sure all our braces are closed! Very tricky when you have multiple layers open...
+
+#It seems our large females are more common during the winter and spring and our small males are more common in the summer and fall.
+ggplot(just_dm, aes(x = date)) + geom_line(aes(y = large_females), color = "Orchid", size = 2) + geom_line(aes(y = small_males), color = "steelblue", size = 2)
+```
+
+##Part 3 -- Creating custom functions
+
+Up until now, we've relied entirely on functions that someone else has written for R. It turns out, though, that writing our own functions isn't all that tricky! So, if there is some complex set of operations we're always doing with our data, such as making cumulative count columns, we could write a function that would do that set of operations without us having to write it out manually each time. 
+
+Let's look at the basics of making a function:
+
+```
+function.name = function(argument1, argument2, optional_argument3 = 0...) {
+
+~Operations to do~
+
+return(output)
+}
+```
+
+Maybe a few things jumped out at you as familiar when you saw this pseudocode above? Let's cover the details. First, functions are technically objects, as confusing as that sounds, which means they can be assigned names! That name goes to the left of the assignment operator. Functions are made using the *function*() function, appropriately. You specify what argument slots your function needs inside of the parentheses, then you put the operations to be performed by the function inside of curly braces--yes, function is a **control function**! The *return*() function specifically directs R to report whatever object is inside of it as the **output** of the function.
+
+Let's make a very low-key function to show you how this all works in practice. This function will multiply any number(s) given as inputs by 10.
+
+```{r times10}
+times10 = function(value) {
+  product = value * 10
+  return(product)
+}
+```
+
+You'll notice that just like the *variable* in the *for*() loop became an object we could play around with inside of the *for*() loop, arguments do the same thing. That's why they have names! So, whatever number is provided for the *value* argument becomes the contents of the *value* object inside of the function, and we can do work with it, like multiply it by 10.
+
+```{r using_times10}
+times10(5) #Ta-da! So, here, "value" inside of the function is set to contain the number 5, the value we provided this argument as input.
+```
+
+We saw, during the workshop, that some arguments in functions are **required** while others are **optional**. To make an argument optional, we need to tell R what value that argument should take if none is given. We do this by putting an equals sign in the parentheses with the default value we want after it.
+
+```{r optional_reqs}
+times10 = function(value = 5) {
+  product = value * 10
+  return(product)
+}
+
+times10() #Now, R knows that if we don't provide a value to times10(), we want value to be equal to 5. 
+```
+
+I mentioned earlier that *if*() can be used to create warnings. Let's show you how that works.
+
+```{r warnings}
+times10 = function(value = 5) {
+  #Here, we'll insert an if statement that will cause a warning message to appear if we try to run the function with an input value of 5.
+  if(value == 5) { #Remember to use your double equals sign here!
+    warning("The default for the value argument is 5. Did you mean to specify a different value?")
+  }
+  
+  product = value * 10
+  return(product)
+}
+
+times10() 
+```
+
+We receive our warning along with our answer! It's even a very informative warning, unlike some default R warnings :).
+
+There's a similar function called *stop*() that will trigger an error instead, preventing the function from running altogether.
+
+```{r errors}
+times10 = function(value = 5) {
+  if(value == 5) {
+    stop("The default for the value argument is 5. Did you mean to specify a different value?")
+  }
+  product = value * 10
+  return(product)
+}
+```
+
+```
+times10(5) #I can't run this line of code normally or my document wouldn't knit because of the error, but you should be able to run it yourself to see the error in action.
+```
+
+One more thing: It's good practice to put in a comment early in the function's curly braces that explains what the function does, why, and what inputs it takes.
+
+```{r instructions}
+times10 = function(value = 5) {
+  #This function multiplies the input values by 10 because it makes me outrageously happy for it to do that. It takes numeric values as entries and returns the mathematical results. But don't you dare try putting 5 in here, you jerk. You know I don't like that.
+  
+  if(value == 5) {
+    stop("The default for the value argument is 5, and 5 is a bad number. Why are you a jerk?")
+  }
+  product = value * 10
+  return(product)
+}
+```
+
+###Try it! 
+
+Try making a function that will automatically make a cumulative count column and add it to a data frame!
+
+###Example
+
+This is a pretty tricky challenge, but the key to success is to remember that *you've already written basically all the code for this function already*. You just need to "generalize" that code now. In other words, you need to come up with generic argument names for specific objects you need to work with, and then you need to replace those specific names in your code with the general ones instead. The code below does this. First, it notes that we work with three things in our original code--a data frame to stick a column onto, a column in that data frame to check to make our counts (this was our weight column earlier), and a threshold value--we'll only count a row if it is above/below this threshold. So, those will be our three arguments in our function--a slot for a data frame, a slot for a column, and a slot for a threshold. Everything else about the code is the same, except that we've replaced references to *surveys*, for example, with references to the generic *data.frame* argument name. We do that so that our function code will work with ANY data frame we give it, not just *surveys*.
+
+```{r cumulative_col}
+cumulative_col = function(data.frame, col2check, criterion1 = 50) {
+  #This function appends a new column to a data frame provided as input. This new column, called cumulative, is a cumulative count of the number of entries in a specific column, also provided separately as input, that meets some criterion, also provided as input. The default threshold criterion is 50. The function returns as output the data frame with the new column. This is a very useful function because I have to calculate such a column for each year of my 20 year study, using a different threshold each year. 
+  
+  data.frame$cumulative = NA #Make the empty vector in the generic data.frame provided as input, with this column just generically called cumulative.
+  
+  if(col2check[1] <= criterion1) { #Check to see if the column we're checking is less than or equal to a threshold.
+    data.frame$cumulative[1] = 0 #You may have to adjust these rules to suit your particular needs.
+  } else { data.frame$cumulative[1] = 1 } #Here, I'm only counting an animal if it is larger than 50, our threshold.
+  
+  
+  for(row in 2:nrow(data.frame)) { #Go through each row of the data set after the first.
+    if (col2check[row] <= criterion1) { #Check to see if the current row is less than or equal to the threshold provided as input.
+      data.frame$cumulative[row] = data.frame$cumulative[row-1] + 1 #If it is, increase the cumulative count by one.
+    } else {
+      data.frame$cumulative[row] = data.frame$cumulative[row-1] #If not, though, just carry the previous count forward.
+    } #I like to comment on lines like this to note which if/else is being closed. Here, it's the previous else.
+  } #Closes for loop
+  return(data.frame) #Don't forget to return the new data frame, since that is what you want as output!
+} #Closes the function call
+```
+
+As you can see below, our new function is successful! It even appropriately changes its behavior as our input to the *criterion1* argument changes, just as we wanted. **This is the nice thing about making your own functions--if your colleagues want to see the results with just one little thing changed, it's nice to be able to make that change by changing a single input to a function!**
+
+```{r varied_inputs}
+saved_file = cumulative_col(just_dm, just_dm$weight, criterion1 = 50)
+saved_file$cumulative
+
+saved_file2 = cumulative_col(just_dm, just_dm$weight, criterion1 = 30)
+saved_file2$cumulative
+```
