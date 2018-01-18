@@ -23,4 +23,9 @@ ggplot(surveys, aes(x=date, y=weight)) +
 # color the scatterplot points by date
 ggplot(surveys, aes(x=date, y=weight)) +
   geom_point(aes(color=date))
-  # not too shabby, still kind of intelligable
+  # not too shabby, still kind of unintelligable
+
+# see what coloring scatterplot by species_id does
+ggplot(surveys, aes(x=date, y=weight)) +
+  geom_point(aes(color=species_id))
+  # this one turned out to be surprisngly useful
